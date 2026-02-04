@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Stop Tabac - Économies</title>
+  <meta name="theme-color" content="#466781">
+  <style>
+    :root{
+      --bg:#0f1720; --card:#121c27; --muted:#a9b4c2; --text:#eef3f8; --accent:#466781; --line:rgba(255,255,255,.08);
+    }
+    body{ margin:0; font-family: -apple-system, system-ui, Segoe UI, Roboto, Arial; background:linear-gradient(180deg,#0b1118, var(--bg)); color:var(--text); }
+    .wrap{ max-width:720px; margin:0 auto; padding:18px; }
+    h1{ font-size:1.2rem; margin:10px 0 14px; font-weight:800; }
+    .card{ background:rgba(18,28,39,.92); border:1px solid var(--line); border-radius:14px; padding:14px; margin:12px 0; }
+    .grid{ display:grid; gap:10px; grid-template-columns:1fr; }
+    @media (min-width:720px){ .grid{ grid-template-columns:1fr 1fr; } }
+    label{ display:block; font-size:.86rem; color:var(--muted); margin:0 0 6px; font-weight:650; }
+    input, select{
+      width:100%; padding:10px 12px; border-radius:12px; border:1px solid var(--line);
+      background:#0b1118; color:var(--text); font-size:1rem; outline:none;
+    }
+    input:focus{ border-color:rgba(70,103,129,.65); box-shadow:0 0 0 3px rgba(70,103,129,.25); }
+    .btns{ display:flex; gap:10px; flex-wrap:wrap; }
+    button{
+      border:0; border-radius:999px; padding:10px 14px; font-weight:800; cursor:pointer;
+      background:var(--accent); color:white;
+    }
+    button.secondary{ background:transparent; border:1px solid var(--line); color:var(--text); }
+    .kpi{ display:grid; gap:10px; grid-template-columns:1fr; }
+    @media (min-width:720px){ .kpi{ grid-template-columns:repeat(3,1fr); } }
+    .kpi .box{ background:rgba(255,255,255,.03); border:1px solid var(--line); border-radius:14px; padding:12px; }
+    .big{ font-size:1.5rem; font-weight:900; margin-top:4px; }
+    .small{ font-size:.85rem; color:var(--muted); line-height:1.35; }
+    .toggle{ display:flex; align-items:center; gap:10px; }
+    .toggle input{ width:auto; }
+    .warn{ color:#ffd28a; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Stop tabac - économies & suivi</h1>
+
+    <div class="card">
+      <div class="grid">
+        <div>
+          <label>Date/heure d’arrêt</label>
+          <input id="quitAt" type="datetime-local">
+        </div>
+        <div>
+          <label>Prix d’un paquet (€)</label>
+          <input id="packPrice" type="number" min="0" step="0.01" value="12.00">
+        </div>
+        <div>
+          <label>Cigarettes par paquet</label>
+          <input id="cigsPerPack" type="number" min="1" step="1" value="20">
+        </div>
+        <div>
+          <label>Ta conso avant (cigarettes / jour)</label>
+          <input id="cigsPerDay" type="number" min="0" step="1" value="17">
+        </div>
+      </div>
+
+      <div style="margin-top:12px" class="toggle">
+        <input id="showLife" type="checkbox">
+        <label style="margin:0">Afficher “temps de vie statistique (approx)”</label>
+      </div>
+      <div class="small warn" style="margin-top:6px">
+        Note : ce chiffre est une approximation très grossière (moyenne population), pas une mesure médicale individuelle.
+      </div>
+
+      <div class="btns" style="margin-top:12px">
+        <button id="save">Enregistrer</button>
+        <button class="secondary" id="reset">Réinitialiser</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="kpi">
+        <div class="box">
+          <div class="small">Temps sans cigarette</div>
+          <div class="big" id="kpiTime">-</div>
+        </div>
+        <div class="box">
+          <div class="small">Économies</div>
+          <div class="big" id="kpiMoney">-</div>
+        </div>
+        <div class="box">
+          <div class="small">Cigarettes évitées</div>
+          <div class="big" id="kpiCigs">-</div>
+        </div>
+      </div>
+
+      <div id="lifeBox" class="box" style="display:none; margin-top:10px">
+        <div class="small">Temps de vie statistique (approx)</div>
+        <div class="big" id="kpiLife">-</div>
+        <div class="small" style="margin-top:6px">
+          Calcul basé sur une convention souvent citée : ~11 minutes “perdues” par cigarette en moyenne. À prendre comme un repère symbolique, pas comme une vérité.
+        </div>
+      </div>
+
+      <div class="small" style="margin-top:12px">
+        Astuce : mets cette page sur l’écran d’accueil (iPhone : Partager - Sur l’écran d’accueil).
+      </div>
+    </div>
+  </div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+
+  // Convention (OPTIONNELLE) souvent citée : 11 minutes par cigarette.
+  // Ce n'est pas une mesure individuelle. D'où le toggle.
+  const MINUTES_PER_CIG_APPROX = 11;
+
+  function fmtEUR(x){
+    return new Intl.NumberFormat('fr-FR', { style:'currency', currency:'EUR' }).format(x);
+  }
+  function pad2(n){ return String(n).padStart(2,'0'); }
+
+  function defaultQuitAt(){
+    const d = new Date();
+    // Par défaut : hier 13:00 si tu veux, sinon maintenant. Ici: maintenant.
+    const yyyy = d.getFullYear();
+    const mm = pad2(d.getMonth()+1);
+    const dd = pad2(d.getDate());
+    const hh = pad2(d.getHours());
+    const mi = pad2(d.getMinutes());
+    return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
+  }
+
+  function load(){
+    const data = JSON.parse(localStorage.getItem('stopTabac') || '{}');
+    $('quitAt').value = data.quitAt || defaultQuitAt();
+    $('packPrice').value = data.packPrice ?? 12.00;
+    $('cigsPerPack').value = data.cigsPerPack ?? 20;
+    $('cigsPerDay').value = data.cigsPerDay ?? 17;
+    $('showLife').checked = data.showLife ?? false;
+  }
+
+  function save(){
+    const data = {
+      quitAt: $('quitAt').value,
+      packPrice: Number($('packPrice').value || 0),
+      cigsPerPack: Number($('cigsPerPack').value || 20),
+      cigsPerDay: Number($('cigsPerDay').value || 0),
+      showLife: $('showLife').checked
+    };
+    localStorage.setItem('stopTabac', JSON.stringify(data));
+    render();
+  }
+
+  function reset(){
+    localStorage.removeItem('stopTabac');
+    load();
+    render();
+  }
+
+  function diffParts(ms){
+    const totalSec = Math.max(0, Math.floor(ms/1000));
+    const days = Math.floor(totalSec / 86400);
+    const hrs = Math.floor((totalSec % 86400) / 3600);
+    const mins = Math.floor((totalSec % 3600) / 60);
+    return { days, hrs, mins };
+  }
+
+  function render(){
+    const data = JSON.parse(localStorage.getItem('stopTabac') || '{}');
+
+    const quitAtStr = $('quitAt').value;
+    const quitAt = new Date(quitAtStr);
+    const now = new Date();
+    const elapsedMs = now - quitAt;
+
+    if(!quitAtStr || isNaN(quitAt.getTime()) || elapsedMs < 0){
+      $('kpiTime').textContent = '-';
+      $('kpiMoney').textContent = '-';
+      $('kpiCigs').textContent = '-';
+      $('lifeBox').style.display = 'none';
+      return;
+    }
+
+    const {days, hrs, mins} = diffParts(elapsedMs);
+    $('kpiTime').textContent = `${days} j ${hrs} h ${mins} min`;
+
+    const packPrice = Number($('packPrice').value || 0);
+    const cigsPerPack = Math.max(1, Number($('cigsPerPack').value || 20));
+    const cigsPerDay = Math.max(0, Number($('cigsPerDay').value || 0));
+
+    const pricePerCig = packPrice / cigsPerPack;
+
+    const elapsedDays = elapsedMs / (1000*60*60*24);
+    const cigsAvoided = Math.max(0, cigsPerDay * elapsedDays);
+    const moneySaved = cigsAvoided * pricePerCig;
+
+    $('kpiCigs').textContent = Math.floor(cigsAvoided).toLocaleString('fr-FR');
+    $('kpiMoney').textContent = fmtEUR(moneySaved);
+
+    const showLife = $('showLife').checked;
+    $('lifeBox').style.display = showLife ? 'block' : 'none';
+    if(showLife){
+      const minsLife = cigsAvoided * MINUTES_PER_CIG_APPROX;
+      const total = Math.floor(minsLife);
+      const d = Math.floor(total / 1440);
+      const h = Math.floor((total % 1440) / 60);
+      const m = total % 60;
+      $('kpiLife').textContent = `${d} j ${h} h ${m} min`;
+    }
+  }
+
+  $('save').addEventListener('click', save);
+  $('reset').addEventListener('click', reset);
+
+  // Auto-save on change (simple)
+  ['quitAt','packPrice','cigsPerPack','cigsPerDay','showLife'].forEach(id=>{
+    $(id).addEventListener('change', save);
+    $(id).addEventListener('input', render);
+  });
+
+  load();
+  render();
+  setInterval(render, 1000 * 10);
+</script>
+</body>
+</html>
